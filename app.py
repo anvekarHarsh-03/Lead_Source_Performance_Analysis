@@ -1,187 +1,157 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+import plotly.express as px
 
-st.title("Lead Source Performance Analysis")
+st.set_page_config(layout="wide")
 
-# =========================
-# LOAD DATA
-# =========================
-leads = pd.read_csv("dataset/leads_unclean_25000.csv")
-funnel = pd.read_csv("dataset/funnel_unclean_25000.csv")
-cost = pd.read_csv("dataset/marketing_cost_unclean.csv")
-
-
+st.title("📊 Lead Source Performance Dashboard")
 
 # =========================
-# CLEAN LEADS DATA
+# LOAD + CLEAN (FIXED DATE)
 # =========================
-leads = leads.drop_duplicates()
+@st.cache_data
+def load_data():
+    leads = pd.read_csv("dataset/leads_unclean_25000.csv")
+    funnel = pd.read_csv("dataset/funnel_unclean_25000.csv")
+    cost = pd.read_csv("dataset/marketing_cost_unclean.csv")
 
-leads["City"] = leads["City"].str.strip().str.title()
-leads["Course_Interest"] = leads["Course_Interest"].str.strip().str.title()
+    leads = leads.drop_duplicates()
 
-leads["Course_Interest"] = leads["Course_Interest"].replace({
-    "Ai Ml": "AI/ML",
-    "Ai/Ml": "AI/ML"
-})
+    leads["City"] = leads["City"].str.strip().str.title()
+    leads["Course_Interest"] = leads["Course_Interest"].str.strip().str.title()
+    leads["Lead_Source"] = leads["Lead_Source"].str.strip().str.title()
 
-leads["Lead_Source"] = leads["Lead_Source"].str.strip().str.title()
-
-leads = leads.dropna(subset=["Lead_Source"])
-leads["City"] = leads["City"].fillna("Unknown")
-leads["Course_Interest"] = leads["Course_Interest"].fillna("Unknown")
-
-leads["Date"] = pd.to_datetime(
-    leads["Date"],
-    errors="coerce",
-    format="mixed"
-)
-
-#leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce", dayfirst=True)
-leads = leads.dropna(subset=["Date"])
-
-# =========================
-# CLEAN FUNNEL DATA
-# =========================
-def clean_yes_no(col):
-    return col.str.strip().str.lower().replace({
-        "yes": "Yes",
-        "y": "Yes",
-        "no": "No",
-        "n": "No"
+    leads["Course_Interest"] = leads["Course_Interest"].replace({
+        "Ai Ml": "AI/ML",
+        "Ai/Ml": "AI/ML"
     })
 
-funnel["Counselling"] = clean_yes_no(funnel["Counselling"])
-funnel["Application"] = clean_yes_no(funnel["Application"])
-funnel["Enrolled"] = clean_yes_no(funnel["Enrolled"])
+    leads = leads.dropna(subset=["Lead_Source"])
+    leads["City"] = leads["City"].fillna("Unknown")
+    leads["Course_Interest"] = leads["Course_Interest"].fillna("Unknown")
 
-funnel = funnel.fillna("No")
+    # ✅ FIXED DATE
+    leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce", format="mixed")
+    leads = leads.dropna(subset=["Date"])
+
+    def clean_yes_no(col):
+        return col.str.strip().str.lower().replace({
+            "yes": "Yes", "y": "Yes",
+            "no": "No", "n": "No"
+        })
+
+    funnel["Counselling"] = clean_yes_no(funnel["Counselling"])
+    funnel["Application"] = clean_yes_no(funnel["Application"])
+    funnel["Enrolled"] = clean_yes_no(funnel["Enrolled"])
+    funnel = funnel.fillna("No")
+
+    cost["Channel"] = cost["Channel"].str.strip().str.title()
+    cost = cost.dropna()
+
+    cost["Monthly_Cost"] = cost["Monthly_Cost"].astype(str)
+    cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace(",", "")
+    cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace("INR", "")
+    cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace("Thirty Thousand", "30000")
+    cost["Monthly_Cost"] = pd.to_numeric(cost["Monthly_Cost"], errors="coerce")
+
+    df = leads.merge(funnel, on="Lead_ID")
+
+    return df, cost
+
+df, cost = load_data()
 
 # =========================
-# CLEAN COST DATA
+# KPIs
 # =========================
-cost["Channel"] = cost["Channel"].str.strip().str.title()
-cost = cost.dropna()
+total_leads = df.shape[0]
+enrolled = df[df["Enrolled"] == "Yes"].shape[0]
+conversion_rate = (enrolled / total_leads) * 100
 
-cost["Monthly_Cost"] = cost["Monthly_Cost"].astype(str)
-cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace(",", "")
-cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace("INR", "")
-cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace("Thirty Thousand", "30000")
-cost["Monthly_Cost"] = cost["Monthly_Cost"].str.strip()
+# cost per enrollment (blended)
+total_cost = cost["Monthly_Cost"].sum()
+cost_per_enrollment = total_cost / enrolled
 
-cost["Monthly_Cost"] = pd.to_numeric(cost["Monthly_Cost"], errors="coerce")
+col1, col2, col3, col4 = st.columns(4)
 
-# =========================
-# MERGE
-# =========================
-df = leads.merge(funnel, on="Lead_ID")
+col1.metric("Total Leads", total_leads)
+col2.metric("Enrollments", enrolled)
+col3.metric("Conversion Rate", f"{conversion_rate:.2f}%")
+col4.metric("Cost / Enrollment", f"₹{cost_per_enrollment:.0f}")
 
-st.subheader("Merged Data Shape")
-st.write(df.shape)
+st.divider()
 
 # =========================
 # CHANNEL PERFORMANCE
 # =========================
-lead_counts = df.groupby("Lead_Source")["Lead_ID"].count().sort_values(ascending=False)
-lead_counts = pd.DataFrame(lead_counts).reset_index()
-lead_counts = lead_counts.rename(columns={"Lead_Source": "Channel", "Lead_ID": "lead_counts"})
+lead_counts = df.groupby("Lead_Source")["Lead_ID"].count().reset_index()
+lead_counts.columns = ["Channel", "Leads"]
 
-st.subheader("Lead Counts by Channel")
-st.dataframe(lead_counts)
-
-enrollments = df[df["Enrolled"] == "Yes"].groupby("Lead_Source")["Lead_ID"].count()
-enrollments = pd.DataFrame(enrollments).reset_index()
-enrollments = enrollments.rename(columns={"Lead_Source": "Channel", "Lead_ID": "Enrollments"})
-
-st.subheader("Enrollments by Channel")
-st.dataframe(enrollments)
+enrollments = df[df["Enrolled"] == "Yes"] \
+    .groupby("Lead_Source")["Lead_ID"].count().reset_index()
+enrollments.columns = ["Channel", "Enrollments"]
 
 channel_stats = lead_counts.merge(enrollments, on="Channel")
-channel_stats["Conversion_rate"] = (channel_stats["Enrollments"] / channel_stats["lead_counts"]) * 100
-channel_stats["Conversion_rate"] = channel_stats["Conversion_rate"].round(2)
-
 channel_stats = channel_stats.merge(cost, on="Channel")
 
-channel_stats["cost_per_enrollment"] = channel_stats["Monthly_Cost"] / channel_stats["Enrollments"]
+channel_stats["Conversion Rate"] = (
+    channel_stats["Enrollments"] / channel_stats["Leads"] * 100
+)
 
-st.subheader("Channel Stats")
-st.dataframe(channel_stats)
-
-# =========================
-# FUNNEL ANALYSIS
-# =========================
-total_leads = df.shape[0]
-counselling = df[df["Counselling"] == "Yes"].shape[0]
-application = df[df["Application"] == "Yes"].shape[0]
-enrolled = df[df["Enrolled"] == "Yes"].shape[0]
-
-st.subheader("Funnel Counts")
-st.write("Leads:", total_leads)
-st.write("Counselling:", counselling)
-st.write("Application:", application)
-st.write("Enrolled:", enrolled)
-
-st.subheader("Conversion Rates")
-st.write("Lead → Counselling:", round((counselling / total_leads) * 100, 2), "%")
-st.write("Counselling → Application:", round((application / counselling) * 100, 2), "%")
-st.write("Application → Enrollment:", round((enrolled / application) * 100, 2), "%")
+channel_stats["Cost per Enrollment"] = (
+    channel_stats["Monthly_Cost"] / channel_stats["Enrollments"]
+)
 
 # =========================
-# CHANNEL FUNNEL
+# ROI CHART
 # =========================
-funnel_channel = df.groupby("Lead_Source").agg({
-    "Counselling": lambda x: (x == "Yes").sum(),
-    "Application": lambda x: (x == "Yes").sum(),
-    "Enrolled": lambda x: (x == "Yes").sum(),
-    "Lead_ID": "count"
-}).reset_index()
+st.subheader("📈 Channel ROI Analysis")
 
-funnel_channel.columns = ["Channel", "Counselling", "Application", "Enrolled", "Leads"]
+fig = px.scatter(
+    channel_stats,
+    x="Cost per Enrollment",
+    y="Conversion Rate",
+    size="Leads",
+    color="Channel",
+    hover_name="Channel",
+    title="Efficiency vs Effectiveness"
+)
 
-st.subheader("Channel-wise Funnel")
-st.dataframe(funnel_channel)
-
-# =========================
-# CITY CHANNEL
-# =========================
-city_channel = df.groupby(["City", "Lead_Source"])["Lead_ID"].count().reset_index()
-city_channel.columns = ["City", "Channel", "Leads"]
-
-st.subheader("City-wise Channel Performance")
-st.dataframe(city_channel.head())
+st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# COURSE DEMAND
+# FUNNEL
 # =========================
-course_channel = df.groupby(["Lead_Source", "Course_Interest"])["Lead_ID"].count().reset_index()
-course_channel = course_channel.sort_values(by="Lead_ID", ascending=False)
+st.subheader("🔻 Funnel Drop-off")
 
-st.subheader("Course Demand by Channel")
-st.dataframe(course_channel)
+funnel_data = pd.DataFrame({
+    "Stage": ["Leads", "Counselling", "Application", "Enrollment"],
+    "Count": [
+        total_leads,
+        (df["Counselling"] == "Yes").sum(),
+        (df["Application"] == "Yes").sum(),
+        (df["Enrolled"] == "Yes").sum()
+    ]
+})
+
+fig2 = px.funnel(funnel_data, x="Count", y="Stage")
+st.plotly_chart(fig2, use_container_width=True)
 
 # =========================
-# MONTHLY TREND
+# AUTO INSIGHTS (MBB STYLE)
 # =========================
-df["month"] = df["Date"].dt.to_period("M")
+st.subheader("💡 Key Insights")
 
-monthly_trend = df.groupby(["month", "Lead_Source"])["Lead_ID"].count().reset_index()
+best_roi = channel_stats.sort_values("Cost per Enrollment").iloc[0]
+worst_roi = channel_stats.sort_values("Cost per Enrollment", ascending=False).iloc[0]
 
-st.subheader("Monthly Trend")
-st.dataframe(monthly_trend.head())
+best_conv = channel_stats.sort_values("Conversion Rate", ascending=False).iloc[0]
 
-# =========================
-# VISUALS (Same as notebook)
-# =========================
-st.subheader("Leads per Channel")
-fig1, ax1 = plt.subplots()
-funnel_channel.plot(kind="bar", x="Channel", y="Leads", ax=ax1)
-st.pyplot(fig1)
+st.markdown(f"""
+- **Best ROI Channel:** {best_roi['Channel']} (₹{best_roi['Cost per Enrollment']:.0f} per enrollment)
+- **Worst ROI Channel:** {worst_roi['Channel']} (₹{worst_roi['Cost per Enrollment']:.0f})
+- **Highest Conversion Channel:** {best_conv['Channel']} ({best_conv['Conversion Rate']:.2f}%)
 
-st.subheader("Funnel Drop-off")
-funnel_values = [total_leads, counselling, application, enrolled]
-
-fig2, ax2 = plt.subplots()
-ax2.plot(["Leads", "Counselling", "Application", "Enrollment"], funnel_values, marker='o')
-st.pyplot(fig2)
+### Strategic Takeaway:
+- Reallocate budget from **{worst_roi['Channel']} → {best_roi['Channel']}**
+- Improve **top-of-funnel conversion (Leads → Counselling)** — biggest drop-off
+""")
