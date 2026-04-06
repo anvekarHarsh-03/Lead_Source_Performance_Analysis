@@ -12,15 +12,7 @@ leads = pd.read_csv("dataset/leads_unclean_25000.csv")
 funnel = pd.read_csv("dataset/funnel_unclean_25000.csv")
 cost = pd.read_csv("dataset/marketing_cost_unclean.csv")
 
-st.write("Before date parsing:", leads.shape)
 
-leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce", dayfirst=True)
-
-st.write("Null dates after parsing:", leads["Date"].isna().sum())
-
-leads = leads.dropna(subset=["Date"])
-
-st.write("After date cleaning:", leads.shape)
 
 # =========================
 # CLEAN LEADS DATA
@@ -41,7 +33,13 @@ leads = leads.dropna(subset=["Lead_Source"])
 leads["City"] = leads["City"].fillna("Unknown")
 leads["Course_Interest"] = leads["Course_Interest"].fillna("Unknown")
 
-leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce", dayfirst=True)
+leads["Date"] = pd.to_datetime(
+    leads["Date"],
+    errors="coerce",
+    format="mixed"
+)
+
+#leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce", dayfirst=True)
 leads = leads.dropna(subset=["Date"])
 
 # =========================
