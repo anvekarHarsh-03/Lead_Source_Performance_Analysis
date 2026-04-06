@@ -89,10 +89,23 @@ df_filtered = df[
 # =========================
 # KPIs
 # =========================
+counselling_df = df_filtered[df_filtered["Counselling"] == "Yes"]
+
+application_df = counselling_df[counselling_df["Application"] == "Yes"]
+
+enrolled_df = application_df[application_df["Enrolled"] == "Yes"]
+
+# KPIs
 total_leads = df_filtered.shape[0]
-counselling = df_filtered[df_filtered["Counselling"] == "Yes"].shape[0]
-applications = df_filtered[df_filtered["Application"] == "Yes"].shape[0]
-enrolled = df_filtered[df_filtered["Enrolled"] == "Yes"].shape[0]
+counselling = counselling_df.shape[0]
+applications = application_df.shape[0]
+enrolled = enrolled_df.shape[0]
+
+
+# total_leads = df_filtered.shape[0]
+# counselling = df_filtered[df_filtered["Counselling"] == "Yes"].shape[0]
+# applications = df_filtered[df_filtered["Application"] == "Yes"].shape[0]
+# enrolled = df_filtered[df_filtered["Enrolled"] == "Yes"].shape[0]
 
 col1, col2, col3, col4 = st.columns(4)
 
