@@ -12,6 +12,10 @@ leads = pd.read_csv("dataset/leads_unclean_25000.csv")
 funnel = pd.read_csv("dataset/funnel_unclean_25000.csv")
 cost = pd.read_csv("dataset/marketing_cost_unclean.csv")
 
+st.write("Leads shape BEFORE cleaning:", leads.shape)
+st.write("Funnel shape BEFORE cleaning:", funnel.shape)
+st.write("Cost shape BEFORE cleaning:", cost.shape)
+
 # =========================
 # CLEAN LEADS DATA
 # =========================
