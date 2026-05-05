@@ -2,36 +2,53 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# =========================
-# PAGE CONFIG
-# =========================
 st.set_page_config(layout="wide")
 
 # =========================
-# BOOTSTRAP-LIKE CSS
+# ADVANCED UI CSS (REPLICA)
 # =========================
 st.markdown("""
 <style>
 
+/* GLOBAL */
 .main {
-    background-color: #f5f7fb;
+    background-color: #f4f6fb;
+    padding: 0;
 }
 
-.sidebar .sidebar-content {
-    background-color: #111827;
+/* REMOVE DEFAULT PADDING */
+.block-container {
+    padding-top: 1rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
 }
 
-.card {
-    background-color: white;
-    padding: 18px;
-    border-radius: 10px;
-    box-shadow: 0px 2px 8px rgba(0,0,0,0.05);
-}
-
-.kpi-card {
-    background: linear-gradient(135deg, #4f46e5, #6366f1);
+/* SIDEBAR */
+section[data-testid="stSidebar"] {
+    background-color: #111827 !important;
     color: white;
-    padding: 20px;
+}
+
+.sidebar-title {
+    font-size: 18px;
+    font-weight: 600;
+    padding: 10px 0;
+}
+
+/* HEADER */
+.topbar {
+    background-color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.05);
+}
+
+/* KPI CARDS */
+.kpi {
+    background: linear-gradient(135deg, #5b5cf6, #7c3aed);
+    color: white;
+    padding: 18px;
     border-radius: 10px;
 }
 
@@ -45,8 +62,17 @@ st.markdown("""
     font-weight: bold;
 }
 
-.section-title {
-    font-size: 18px;
+/* CARDS */
+.card {
+    background-color: white;
+    padding: 18px;
+    border-radius: 10px;
+    box-shadow: 0px 3px 8px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+}
+
+.card-title {
+    font-size: 15px;
     font-weight: 600;
     margin-bottom: 10px;
 }
@@ -55,7 +81,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================
-# LOAD DATA (same as yours)
+# DATA LOAD
 # =========================
 @st.cache_data
 def load_data():
@@ -70,10 +96,9 @@ def load_data():
     leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce")
     leads = leads.dropna(subset=["Date"])
 
-    def clean(col):
-        return col.str.lower().map({"yes":"Yes","no":"No"})
-
-    funnel["Enrolled"] = clean(funnel["Enrolled"])
+    funnel["Enrolled"] = funnel["Enrolled"].str.lower().map({
+        "yes":"Yes","no":"No"
+    })
     funnel = funnel.fillna("No")
 
     cost["Monthly_Cost"] = pd.to_numeric(
@@ -84,20 +109,26 @@ def load_data():
     )
 
     df = leads.merge(funnel, on="Lead_ID")
+    df["Month"] = df["Date"].dt.to_period("M").astype(str)
+
     return df, cost
 
 df, cost = load_data()
 
 # =========================
-# SIDEBAR (LIKE IMAGE)
+# SIDEBAR NAV
 # =========================
-st.sidebar.title("📊 Dashboard")
-st.sidebar.markdown("---")
+st.sidebar.markdown('<div class="sidebar-title">📊 Dashboard</div>', unsafe_allow_html=True)
+menu = st.sidebar.radio("", ["Overview", "Channels", "Funnel"])
 
-selected = st.sidebar.radio(
-    "Navigation",
-    ["Overview", "Channel Analysis", "Funnel"]
-)
+# =========================
+# HEADER BAR
+# =========================
+st.markdown("""
+<div class="topbar">
+<b>Home</b> &nbsp; / &nbsp; Dashboard
+</div>
+""", unsafe_allow_html=True)
 
 # =========================
 # KPIs
@@ -107,23 +138,20 @@ enrolled = (df["Enrolled"] == "Yes").sum()
 conversion = enrolled / total_leads * 100
 cpe = cost["Monthly_Cost"].sum() / enrolled
 
-# =========================
-# KPI ROW
-# =========================
-col1, col2, col3, col4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
 def kpi(title, value):
     return f"""
-    <div class="kpi-card">
+    <div class="kpi">
         <div class="kpi-title">{title}</div>
         <div class="kpi-value">{value}</div>
     </div>
     """
 
-col1.markdown(kpi("Total Leads", total_leads), unsafe_allow_html=True)
-col2.markdown(kpi("Enrollments", enrolled), unsafe_allow_html=True)
-col3.markdown(kpi("Conversion Rate", f"{conversion:.1f}%"), unsafe_allow_html=True)
-col4.markdown(kpi("Cost / Enrollment", f"₹{cpe:.0f}"), unsafe_allow_html=True)
+c1.markdown(kpi("Total Leads", total_leads), unsafe_allow_html=True)
+c2.markdown(kpi("Enrollments", enrolled), unsafe_allow_html=True)
+c3.markdown(kpi("Conversion Rate", f"{conversion:.1f}%"), unsafe_allow_html=True)
+c4.markdown(kpi("Cost / Enrollment", f"₹{cpe:.0f}"), unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -137,31 +165,25 @@ channel_stats = lead_counts.merge(enrollments, on="Lead_Source")
 channel_stats.columns = ["Channel", "Leads", "Enrollments"]
 
 # =========================
-# GRID LAYOUT (LIKE IMAGE)
+# GRID LAYOUT
 # =========================
 col1, col2 = st.columns(2)
 
-# ROI SCATTER
+# ROI
 with col1:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">ROI Matrix</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">Channel ROI</div>', unsafe_allow_html=True)
 
-    fig = px.scatter(
-        channel_stats,
-        x="Leads",
-        y="Enrollments",
-        size="Leads",
-        color="Channel"
-    )
-
+    fig = px.scatter(channel_stats, x="Leads", y="Enrollments", color="Channel")
     fig.update_layout(height=300)
+
     st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# BAR CHART
+# BAR
 with col2:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Leads by Channel</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">Leads by Channel</div>', unsafe_allow_html=True)
 
     fig2 = px.bar(channel_stats, x="Channel", y="Leads")
     fig2.update_layout(height=300)
@@ -177,7 +199,7 @@ col3, col4 = st.columns(2)
 # FUNNEL
 with col3:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Funnel</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">Funnel</div>', unsafe_allow_html=True)
 
     funnel_data = pd.DataFrame({
         "Stage": ["Leads","Enrollment"],
@@ -193,9 +215,8 @@ with col3:
 # TREND
 with col4:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Trend</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">Monthly Trend</div>', unsafe_allow_html=True)
 
-    df["Month"] = df["Date"].dt.to_period("M").astype(str)
     trend = df.groupby("Month")["Lead_ID"].count().reset_index()
 
     fig4 = px.line(trend, x="Month", y="Lead_ID")
