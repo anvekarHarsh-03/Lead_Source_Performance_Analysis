@@ -12,6 +12,33 @@ st.set_page_config(layout="wide")
 # =========================
 st.markdown("""
 <style>
+st.markdown("""
+<style>
+
+/* FIX TOP OVERLAP */
+.block-container {
+    padding-top: 3.5rem !important;
+}
+
+/* FORCE HEADER SPACE */
+[data-testid="stHeader"] {
+    height: 60px;
+    background: white !important;
+}
+
+/* ENSURE CONTENT STARTS BELOW HEADER */
+[data-testid="stAppViewContainer"] {
+    margin-top: 0px;
+}
+
+/* PREVENT TEXT CLIPPING */
+.headline {
+    margin-top: 10px;
+    line-height: 1.4;
+}
+
+</style>
+""", unsafe_allow_html=True)
 html, body, [data-testid="stAppViewContainer"] {
     background-color: #ffffff !important;
 }
