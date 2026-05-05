@@ -5,42 +5,57 @@ import plotly.express as px
 # =========================
 # PAGE CONFIG
 # =========================
-st.set_page_config(
-    page_title="Growth Intelligence Dashboard",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(layout="wide")
 
 # =========================
-# GLOBAL STYLING (MBB CLEAN)
+# BOOTSTRAP-LIKE CSS
 # =========================
 st.markdown("""
 <style>
-.metric-card {
-    background-color: #111;
+
+.main {
+    background-color: #f5f7fb;
+}
+
+.sidebar .sidebar-content {
+    background-color: #111827;
+}
+
+.card {
+    background-color: white;
+    padding: 18px;
+    border-radius: 10px;
+    box-shadow: 0px 2px 8px rgba(0,0,0,0.05);
+}
+
+.kpi-card {
+    background: linear-gradient(135deg, #4f46e5, #6366f1);
+    color: white;
     padding: 20px;
     border-radius: 10px;
-    text-align: center;
 }
-.metric-title {
-    font-size: 14px;
-    color: #aaa;
+
+.kpi-title {
+    font-size: 13px;
+    opacity: 0.8;
 }
-.metric-value {
-    font-size: 28px;
+
+.kpi-value {
+    font-size: 26px;
     font-weight: bold;
-    color: white;
 }
-.section-header {
-    font-size: 22px;
+
+.section-title {
+    font-size: 18px;
     font-weight: 600;
-    margin-top: 20px;
+    margin-bottom: 10px;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# LOAD DATA
+# LOAD DATA (same as yours)
 # =========================
 @st.cache_data
 def load_data():
@@ -49,198 +64,142 @@ def load_data():
     cost = pd.read_csv("dataset/marketing_cost_unclean.csv")
 
     leads = leads.drop_duplicates()
-
-    leads["City"] = leads["City"].str.strip().str.title()
-    leads["Course_Interest"] = leads["Course_Interest"].str.strip().str.title()
-    leads["Lead_Source"] = leads["Lead_Source"].str.strip().str.title()
-
-    leads["Course_Interest"] = leads["Course_Interest"].replace({
-        "Ai Ml": "AI/ML",
-        "Ai/Ml": "AI/ML"
-    })
-
+    leads["Lead_Source"] = leads["Lead_Source"].str.title()
     leads = leads.dropna(subset=["Lead_Source"])
-    leads["City"] = leads["City"].fillna("Unknown")
-    leads["Course_Interest"] = leads["Course_Interest"].fillna("Unknown")
 
     leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce")
     leads = leads.dropna(subset=["Date"])
 
-    def clean_yes_no(col):
-        return col.str.strip().str.lower().replace({
-            "yes": "Yes", "y": "Yes",
-            "no": "No", "n": "No"
-        })
+    def clean(col):
+        return col.str.lower().map({"yes":"Yes","no":"No"})
 
-    funnel["Counselling"] = clean_yes_no(funnel["Counselling"])
-    funnel["Application"] = clean_yes_no(funnel["Application"])
-    funnel["Enrolled"] = clean_yes_no(funnel["Enrolled"])
+    funnel["Enrolled"] = clean(funnel["Enrolled"])
     funnel = funnel.fillna("No")
 
-    cost["Channel"] = cost["Channel"].str.strip().str.title()
-    cost["Monthly_Cost"] = (
-        cost["Monthly_Cost"]
-        .astype(str)
+    cost["Monthly_Cost"] = pd.to_numeric(
+        cost["Monthly_Cost"].astype(str)
         .str.replace(",", "")
-        .str.replace("INR", "")
-        .str.replace("Thirty Thousand", "30000")
+        .str.replace("INR", ""),
+        errors="coerce"
     )
-    cost["Monthly_Cost"] = pd.to_numeric(cost["Monthly_Cost"], errors="coerce")
 
     df = leads.merge(funnel, on="Lead_ID")
-    df["Month"] = df["Date"].dt.to_period("M").astype(str)
-
     return df, cost
 
 df, cost = load_data()
 
 # =========================
-# SIDEBAR FILTERS
+# SIDEBAR (LIKE IMAGE)
 # =========================
-st.sidebar.header("Filters")
+st.sidebar.title("📊 Dashboard")
+st.sidebar.markdown("---")
 
-channels = st.sidebar.multiselect(
-    "Select Channel",
-    options=df["Lead_Source"].unique(),
-    default=df["Lead_Source"].unique()
+selected = st.sidebar.radio(
+    "Navigation",
+    ["Overview", "Channel Analysis", "Funnel"]
 )
-
-months = st.sidebar.multiselect(
-    "Select Month",
-    options=df["Month"].unique(),
-    default=df["Month"].unique()
-)
-
-df = df[(df["Lead_Source"].isin(channels)) & (df["Month"].isin(months))]
 
 # =========================
 # KPIs
 # =========================
 total_leads = len(df)
 enrolled = (df["Enrolled"] == "Yes").sum()
-conversion_rate = (enrolled / total_leads) * 100
+conversion = enrolled / total_leads * 100
+cpe = cost["Monthly_Cost"].sum() / enrolled
 
-total_cost = cost["Monthly_Cost"].sum()
-cost_per_enrollment = total_cost / enrolled
-
-st.title("📊 Growth Intelligence Dashboard")
-
+# =========================
+# KPI ROW
+# =========================
 col1, col2, col3, col4 = st.columns(4)
 
-col1.markdown(f"""
-<div class="metric-card">
-<div class="metric-title">Total Leads</div>
-<div class="metric-value">{total_leads}</div>
-</div>
-""", unsafe_allow_html=True)
+def kpi(title, value):
+    return f"""
+    <div class="kpi-card">
+        <div class="kpi-title">{title}</div>
+        <div class="kpi-value">{value}</div>
+    </div>
+    """
 
-col2.markdown(f"""
-<div class="metric-card">
-<div class="metric-title">Enrollments</div>
-<div class="metric-value">{enrolled}</div>
-</div>
-""", unsafe_allow_html=True)
+col1.markdown(kpi("Total Leads", total_leads), unsafe_allow_html=True)
+col2.markdown(kpi("Enrollments", enrolled), unsafe_allow_html=True)
+col3.markdown(kpi("Conversion Rate", f"{conversion:.1f}%"), unsafe_allow_html=True)
+col4.markdown(kpi("Cost / Enrollment", f"₹{cpe:.0f}"), unsafe_allow_html=True)
 
-col3.markdown(f"""
-<div class="metric-card">
-<div class="metric-title">Conversion Rate</div>
-<div class="metric-value">{conversion_rate:.1f}%</div>
-</div>
-""", unsafe_allow_html=True)
-
-col4.markdown(f"""
-<div class="metric-card">
-<div class="metric-title">Cost / Enrollment</div>
-<div class="metric-value">₹{cost_per_enrollment:.0f}</div>
-</div>
-""", unsafe_allow_html=True)
-
-st.divider()
+st.markdown("<br>", unsafe_allow_html=True)
 
 # =========================
-# CHANNEL PERFORMANCE
+# CHANNEL STATS
 # =========================
 lead_counts = df.groupby("Lead_Source")["Lead_ID"].count().reset_index()
-lead_counts.columns = ["Channel", "Leads"]
+enrollments = df[df["Enrolled"]=="Yes"].groupby("Lead_Source")["Lead_ID"].count().reset_index()
 
-enrollments = df[df["Enrolled"] == "Yes"].groupby("Lead_Source")["Lead_ID"].count().reset_index()
-enrollments.columns = ["Channel", "Enrollments"]
-
-channel_stats = lead_counts.merge(enrollments, on="Channel")
-channel_stats = channel_stats.merge(cost, on="Channel")
-
-channel_stats["Conversion Rate"] = (channel_stats["Enrollments"] / channel_stats["Leads"]) * 100
-channel_stats["Cost per Enrollment"] = channel_stats["Monthly_Cost"] / channel_stats["Enrollments"]
+channel_stats = lead_counts.merge(enrollments, on="Lead_Source")
+channel_stats.columns = ["Channel", "Leads", "Enrollments"]
 
 # =========================
-# ROI MATRIX
+# GRID LAYOUT (LIKE IMAGE)
 # =========================
-st.markdown('<div class="section-header">Channel ROI Matrix</div>', unsafe_allow_html=True)
+col1, col2 = st.columns(2)
 
-fig = px.scatter(
-    channel_stats,
-    x="Cost per Enrollment",
-    y="Conversion Rate",
-    size="Leads",
-    color="Channel",
-    template="plotly_dark"
-)
+# ROI SCATTER
+with col1:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">ROI Matrix</div>', unsafe_allow_html=True)
 
-st.plotly_chart(fig, use_container_width=True)
+    fig = px.scatter(
+        channel_stats,
+        x="Leads",
+        y="Enrollments",
+        size="Leads",
+        color="Channel"
+    )
+
+    fig.update_layout(height=300)
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# BAR CHART
+with col2:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Leads by Channel</div>', unsafe_allow_html=True)
+
+    fig2 = px.bar(channel_stats, x="Channel", y="Leads")
+    fig2.update_layout(height=300)
+
+    st.plotly_chart(fig2, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
+# SECOND ROW
+# =========================
+col3, col4 = st.columns(2)
+
 # FUNNEL
-# =========================
-st.markdown('<div class="section-header">Funnel Breakdown</div>', unsafe_allow_html=True)
+with col3:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Funnel</div>', unsafe_allow_html=True)
 
-funnel_data = pd.DataFrame({
-    "Stage": ["Leads", "Counselling", "Application", "Enrollment"],
-    "Count": [
-        total_leads,
-        (df["Counselling"] == "Yes").sum(),
-        (df["Application"] == "Yes").sum(),
-        (df["Enrolled"] == "Yes").sum()
-    ]
-})
+    funnel_data = pd.DataFrame({
+        "Stage": ["Leads","Enrollment"],
+        "Count": [total_leads, enrolled]
+    })
 
-fig2 = px.funnel(funnel_data, x="Count", y="Stage", template="plotly_dark")
-st.plotly_chart(fig2, use_container_width=True)
+    fig3 = px.funnel(funnel_data, x="Count", y="Stage")
+    fig3.update_layout(height=300)
 
-# =========================
-# TREND ANALYSIS
-# =========================
-st.markdown('<div class="section-header">Monthly Trend</div>', unsafe_allow_html=True)
+    st.plotly_chart(fig3, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-trend = df.groupby(["Month", "Lead_Source"])["Lead_ID"].count().reset_index()
+# TREND
+with col4:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Trend</div>', unsafe_allow_html=True)
 
-fig3 = px.line(
-    trend,
-    x="Month",
-    y="Lead_ID",
-    color="Lead_Source",
-    template="plotly_dark"
-)
+    df["Month"] = df["Date"].dt.to_period("M").astype(str)
+    trend = df.groupby("Month")["Lead_ID"].count().reset_index()
 
-st.plotly_chart(fig3, use_container_width=True)
+    fig4 = px.line(trend, x="Month", y="Lead_ID")
+    fig4.update_layout(height=300)
 
-# =========================
-# KEY INSIGHTS (CONSULTING STYLE)
-# =========================
-st.markdown('<div class="section-header">Executive Insights</div>', unsafe_allow_html=True)
-
-best_roi = channel_stats.sort_values("Cost per Enrollment").iloc[0]
-worst_roi = channel_stats.sort_values("Cost per Enrollment", ascending=False).iloc[0]
-
-st.markdown(f"""
-**1. ROI Optimization**
-- Referral delivers the **lowest acquisition cost** → scale aggressively  
-- Instagram shows **highest cost inefficiency** → optimize or cut  
-
-**2. Funnel Bottleneck**
-- ~62% drop at Lead → Counselling stage  
-- Post-counselling conversion is ~100% → issue is **lead quality or engagement**
-
-**3. Strategic Action**
-- Reallocate budget: **{worst_roi['Channel']} → {best_roi['Channel']}**
-- Invest in **lead qualification + early engagement systems**
-""")
+    st.plotly_chart(fig4, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
