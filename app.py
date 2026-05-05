@@ -5,26 +5,64 @@ import plotly.express as px
 st.set_page_config(layout="wide")
 
 # =========================
-# CLEAN WHITE BASE
+# HARD RESET ALL STYLES
 # =========================
 st.markdown("""
 <style>
-html, body, [data-testid="stAppViewContainer"] {
+
+/* FORCE EVERYTHING WHITE */
+html, body, [data-testid="stAppViewContainer"],
+[data-testid="stHeader"], section[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    color: #111111 !important;
+}
+
+/* REMOVE DARK BOXES */
+[data-testid="stPlotlyChart"] {
     background-color: #ffffff !important;
 }
+
+/* FIX SPACING */
 .block-container {
     padding-top: 4rem !important;
     padding-left: 3rem;
     padding-right: 3rem;
 }
-.headline { font-size: 28px; font-weight: 700; }
-.sub { color: #6b7280; margin-bottom: 15px; }
-.kpi { border-top: 3px solid #2563eb; padding-top: 8px; }
-.kpi-title { font-size: 12px; color: #6b7280; }
-.kpi-value { font-size: 22px; font-weight: 600; }
-.exhibit { border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px; }
-.exhibit-title { font-weight: 600; margin-bottom: 6px; }
-.takeaway { margin-top: 6px; font-size: 13px; }
+
+/* TEXT */
+.headline {
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.sub {
+    color: #6b7280;
+    margin-bottom: 20px;
+}
+
+/* KPI */
+.kpi {
+    border-top: 3px solid #2563eb;
+    padding-top: 6px;
+}
+.kpi-title {
+    font-size: 12px;
+    color: #6b7280;
+}
+.kpi-value {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+/* BOX */
+.box {
+    border: 1px solid #e5e7eb;
+    padding: 12px;
+    border-radius: 6px;
+    background: white;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -40,13 +78,13 @@ def load():
     leads = leads.drop_duplicates()
     leads["Lead_Source"] = leads["Lead_Source"].str.title()
     leads = leads.dropna(subset=["Lead_Source"])
+
     leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce")
     leads = leads.dropna(subset=["Date"])
 
-    def clean(c):
-        return c.str.lower().map({"yes":"Yes","no":"No"})
-
-    funnel["Enrolled"] = clean(funnel["Enrolled"]).fillna("No")
+    funnel["Enrolled"] = funnel["Enrolled"].str.lower().map({
+        "yes":"Yes","no":"No"
+    }).fillna("No")
 
     cost["Monthly_Cost"] = pd.to_numeric(
         cost["Monthly_Cost"].astype(str)
@@ -57,6 +95,7 @@ def load():
 
     df = leads.merge(funnel, on="Lead_ID")
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
+
     return df, cost
 
 df, cost = load()
@@ -117,31 +156,24 @@ for i, (t, v) in enumerate([
 st.divider()
 
 # =========================
-# EXHIBIT 1: ROI (FIXED COLORS)
+# ROI (FIXED COLORS + WHITE BG)
 # =========================
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown('<div class="exhibit">', unsafe_allow_html=True)
-    st.markdown("Channel Efficiency vs Cost")
+    st.markdown('<div class="box">', unsafe_allow_html=True)
 
     fig = px.scatter(
         channel,
         x="Cost per Enrollment",
         y="Conversion Rate",
-        color="Channel",  # FIXED
+        color="Channel",
         size="Leads",
-        text="Channel"
+        text="Channel",
+        template="simple_white"   # 🔥 CRITICAL FIX
     )
 
     fig.update_traces(textposition="top center")
-
-    fig.update_layout(
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        font=dict(color="black"),
-        height=350
-    )
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -149,51 +181,31 @@ with col1:
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
-# EXHIBIT 2: FUNNEL
+# FUNNEL (FIXED)
 # =========================
 with col2:
-    st.markdown('<div class="exhibit">', unsafe_allow_html=True)
+    st.markdown('<div class="box">', unsafe_allow_html=True)
 
     funnel_data = pd.DataFrame({
         "Stage":["Leads","Enrollment"],
         "Count":[total_leads,enrolled]
     })
 
-    fig2 = px.funnel(funnel_data, x="Count", y="Stage")
-    fig2.update_layout(height=350)
+    fig2 = px.funnel(
+        funnel_data,
+        x="Count",
+        y="Stage",
+        template="simple_white"   # 🔥 FIX
+    )
 
     st.plotly_chart(fig2, use_container_width=True)
 
-    st.markdown("**Insight:** Major drop happens early.")
+    st.markdown("**Insight:** Major drop early.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
-# NEW VISUAL 1: CHANNEL RANKING
+# TABLE
 # =========================
-st.markdown("### Channel Comparison")
+st.subheader("Channel Comparison")
 
-table = channel.sort_values("Cost per Enrollment")
-
-st.dataframe(
-    table[["Channel","Leads","Enrollments","Conversion Rate","Cost per Enrollment"]],
-    use_container_width=True
-)
-
-# =========================
-# NEW VISUAL 2: COURSE DEMAND
-# =========================
-st.markdown("### Course Demand by Channel")
-
-course = df.groupby(["Lead_Source","Course_Interest"])["Lead_ID"].count().reset_index()
-
-fig3 = px.bar(
-    course,
-    x="Lead_Source",
-    y="Lead_ID",
-    color="Course_Interest",
-    barmode="stack"
-)
-
-fig3.update_layout(height=400)
-
-st.plotly_chart(fig3, use_container_width=True)
+st.dataframe(channel.sort_values("Cost per Enrollment"), use_container_width=True)
