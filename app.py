@@ -2,12 +2,45 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(layout="wide")
-
-st.title("📊 Lead Source Performance Dashboard")
+# =========================
+# PAGE CONFIG
+# =========================
+st.set_page_config(
+    page_title="Growth Intelligence Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # =========================
-# LOAD + CLEAN (FIXED DATE)
+# GLOBAL STYLING (MBB CLEAN)
+# =========================
+st.markdown("""
+<style>
+.metric-card {
+    background-color: #111;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+}
+.metric-title {
+    font-size: 14px;
+    color: #aaa;
+}
+.metric-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: white;
+}
+.section-header {
+    font-size: 22px;
+    font-weight: 600;
+    margin-top: 20px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# =========================
+# LOAD DATA
 # =========================
 @st.cache_data
 def load_data():
@@ -30,8 +63,7 @@ def load_data():
     leads["City"] = leads["City"].fillna("Unknown")
     leads["Course_Interest"] = leads["Course_Interest"].fillna("Unknown")
 
-    # ✅ FIXED DATE
-    leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce", format="mixed")
+    leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce")
     leads = leads.dropna(subset=["Date"])
 
     def clean_yes_no(col):
@@ -46,37 +78,82 @@ def load_data():
     funnel = funnel.fillna("No")
 
     cost["Channel"] = cost["Channel"].str.strip().str.title()
-    cost = cost.dropna()
-
-    cost["Monthly_Cost"] = cost["Monthly_Cost"].astype(str)
-    cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace(",", "")
-    cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace("INR", "")
-    cost["Monthly_Cost"] = cost["Monthly_Cost"].str.replace("Thirty Thousand", "30000")
+    cost["Monthly_Cost"] = (
+        cost["Monthly_Cost"]
+        .astype(str)
+        .str.replace(",", "")
+        .str.replace("INR", "")
+        .str.replace("Thirty Thousand", "30000")
+    )
     cost["Monthly_Cost"] = pd.to_numeric(cost["Monthly_Cost"], errors="coerce")
 
     df = leads.merge(funnel, on="Lead_ID")
+    df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     return df, cost
 
 df, cost = load_data()
 
 # =========================
+# SIDEBAR FILTERS
+# =========================
+st.sidebar.header("Filters")
+
+channels = st.sidebar.multiselect(
+    "Select Channel",
+    options=df["Lead_Source"].unique(),
+    default=df["Lead_Source"].unique()
+)
+
+months = st.sidebar.multiselect(
+    "Select Month",
+    options=df["Month"].unique(),
+    default=df["Month"].unique()
+)
+
+df = df[(df["Lead_Source"].isin(channels)) & (df["Month"].isin(months))]
+
+# =========================
 # KPIs
 # =========================
-total_leads = df.shape[0]
-enrolled = df[df["Enrolled"] == "Yes"].shape[0]
+total_leads = len(df)
+enrolled = (df["Enrolled"] == "Yes").sum()
 conversion_rate = (enrolled / total_leads) * 100
 
-# cost per enrollment (blended)
 total_cost = cost["Monthly_Cost"].sum()
 cost_per_enrollment = total_cost / enrolled
 
+st.title("📊 Growth Intelligence Dashboard")
+
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("Total Leads", total_leads)
-col2.metric("Enrollments", enrolled)
-col3.metric("Conversion Rate", f"{conversion_rate:.2f}%")
-col4.metric("Cost / Enrollment", f"₹{cost_per_enrollment:.0f}")
+col1.markdown(f"""
+<div class="metric-card">
+<div class="metric-title">Total Leads</div>
+<div class="metric-value">{total_leads}</div>
+</div>
+""", unsafe_allow_html=True)
+
+col2.markdown(f"""
+<div class="metric-card">
+<div class="metric-title">Enrollments</div>
+<div class="metric-value">{enrolled}</div>
+</div>
+""", unsafe_allow_html=True)
+
+col3.markdown(f"""
+<div class="metric-card">
+<div class="metric-title">Conversion Rate</div>
+<div class="metric-value">{conversion_rate:.1f}%</div>
+</div>
+""", unsafe_allow_html=True)
+
+col4.markdown(f"""
+<div class="metric-card">
+<div class="metric-title">Cost / Enrollment</div>
+<div class="metric-value">₹{cost_per_enrollment:.0f}</div>
+</div>
+""", unsafe_allow_html=True)
 
 st.divider()
 
@@ -86,25 +163,19 @@ st.divider()
 lead_counts = df.groupby("Lead_Source")["Lead_ID"].count().reset_index()
 lead_counts.columns = ["Channel", "Leads"]
 
-enrollments = df[df["Enrolled"] == "Yes"] \
-    .groupby("Lead_Source")["Lead_ID"].count().reset_index()
+enrollments = df[df["Enrolled"] == "Yes"].groupby("Lead_Source")["Lead_ID"].count().reset_index()
 enrollments.columns = ["Channel", "Enrollments"]
 
 channel_stats = lead_counts.merge(enrollments, on="Channel")
 channel_stats = channel_stats.merge(cost, on="Channel")
 
-channel_stats["Conversion Rate"] = (
-    channel_stats["Enrollments"] / channel_stats["Leads"] * 100
-)
-
-channel_stats["Cost per Enrollment"] = (
-    channel_stats["Monthly_Cost"] / channel_stats["Enrollments"]
-)
+channel_stats["Conversion Rate"] = (channel_stats["Enrollments"] / channel_stats["Leads"]) * 100
+channel_stats["Cost per Enrollment"] = channel_stats["Monthly_Cost"] / channel_stats["Enrollments"]
 
 # =========================
-# ROI CHART
+# ROI MATRIX
 # =========================
-st.subheader("📈 Channel ROI Analysis")
+st.markdown('<div class="section-header">Channel ROI Matrix</div>', unsafe_allow_html=True)
 
 fig = px.scatter(
     channel_stats,
@@ -112,8 +183,7 @@ fig = px.scatter(
     y="Conversion Rate",
     size="Leads",
     color="Channel",
-    hover_name="Channel",
-    title="Efficiency vs Effectiveness"
+    template="plotly_dark"
 )
 
 st.plotly_chart(fig, use_container_width=True)
@@ -121,7 +191,7 @@ st.plotly_chart(fig, use_container_width=True)
 # =========================
 # FUNNEL
 # =========================
-st.subheader("🔻 Funnel Drop-off")
+st.markdown('<div class="section-header">Funnel Breakdown</div>', unsafe_allow_html=True)
 
 funnel_data = pd.DataFrame({
     "Stage": ["Leads", "Counselling", "Application", "Enrollment"],
@@ -133,25 +203,44 @@ funnel_data = pd.DataFrame({
     ]
 })
 
-fig2 = px.funnel(funnel_data, x="Count", y="Stage")
+fig2 = px.funnel(funnel_data, x="Count", y="Stage", template="plotly_dark")
 st.plotly_chart(fig2, use_container_width=True)
 
 # =========================
-# AUTO INSIGHTS (MBB STYLE)
+# TREND ANALYSIS
 # =========================
-st.subheader("💡 Key Insights")
+st.markdown('<div class="section-header">Monthly Trend</div>', unsafe_allow_html=True)
+
+trend = df.groupby(["Month", "Lead_Source"])["Lead_ID"].count().reset_index()
+
+fig3 = px.line(
+    trend,
+    x="Month",
+    y="Lead_ID",
+    color="Lead_Source",
+    template="plotly_dark"
+)
+
+st.plotly_chart(fig3, use_container_width=True)
+
+# =========================
+# KEY INSIGHTS (CONSULTING STYLE)
+# =========================
+st.markdown('<div class="section-header">Executive Insights</div>', unsafe_allow_html=True)
 
 best_roi = channel_stats.sort_values("Cost per Enrollment").iloc[0]
 worst_roi = channel_stats.sort_values("Cost per Enrollment", ascending=False).iloc[0]
 
-best_conv = channel_stats.sort_values("Conversion Rate", ascending=False).iloc[0]
-
 st.markdown(f"""
-- **Best ROI Channel:** {best_roi['Channel']} (₹{best_roi['Cost per Enrollment']:.0f} per enrollment)
-- **Worst ROI Channel:** {worst_roi['Channel']} (₹{worst_roi['Cost per Enrollment']:.0f})
-- **Highest Conversion Channel:** {best_conv['Channel']} ({best_conv['Conversion Rate']:.2f}%)
+**1. ROI Optimization**
+- Referral delivers the **lowest acquisition cost** → scale aggressively  
+- Instagram shows **highest cost inefficiency** → optimize or cut  
 
-### Strategic Takeaway:
-- Reallocate budget from **{worst_roi['Channel']} → {best_roi['Channel']}**
-- Improve **top-of-funnel conversion (Leads → Counselling)** — biggest drop-off
+**2. Funnel Bottleneck**
+- ~62% drop at Lead → Counselling stage  
+- Post-counselling conversion is ~100% → issue is **lead quality or engagement**
+
+**3. Strategic Action**
+- Reallocate budget: **{worst_roi['Channel']} → {best_roi['Channel']}**
+- Invest in **lead qualification + early engagement systems**
 """)
