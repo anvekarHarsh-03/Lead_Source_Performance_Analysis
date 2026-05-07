@@ -86,7 +86,7 @@ def load():
     errors="coerce",
     dayfirst=True
 )
-    leads = leads.dropna(subset=["Date"])
+    # leads = leads.dropna(subset=["Date"])
 
     funnel["Enrolled"] = funnel["Enrolled"].str.lower().map({
         "yes":"Yes","no":"No"
