@@ -85,6 +85,7 @@ def load():
     funnel["Enrolled"] = funnel["Enrolled"].str.lower().map({
         "yes":"Yes","no":"No"
     }).fillna("No")
+    
 
     cost["Monthly_Cost"] = pd.to_numeric(
         cost["Monthly_Cost"].astype(str)
@@ -93,7 +94,14 @@ def load():
         errors="coerce"
     )
 
-    df = leads.merge(funnel, on="Lead_ID")
+    df = leads.merge(funnel, on="Lead_ID", how="left")
+
+    df["Enrolled"] = (
+        df["Enrolled"]
+        .fillna("No")
+        .astype(str)
+    )
+    
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     return df, cost
