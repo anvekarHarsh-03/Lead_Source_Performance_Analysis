@@ -96,8 +96,8 @@ def load_data():
     # ==================================================
     # DEBUG COUNTS
     # ==================================================
-    st.write("Original Leads:", len(leads))
-    st.write("Original Funnel:", len(funnel))
+    # st.write("Original Leads:", len(leads))
+    # st.write("Original Funnel:", len(funnel))
 
     # ==================================================
     # CLEAN LEADS
@@ -115,14 +115,14 @@ def load_data():
         dayfirst=True
     )
 
-    st.write("Invalid Dates:", leads["Date"].isna().sum())
+    # st.write("Invalid Dates:", leads["Date"].isna().sum())
 
     # ==================================================
     # CLEAN FUNNEL
     # ==================================================
     funnel = funnel.drop_duplicates(subset=["Lead_ID"])
 
-    st.write("Funnel after dedupe:", len(funnel))
+    # st.write("Funnel after dedupe:", len(funnel))
 
     # CLEAN ENROLLED COLUMN
     funnel["Enrolled"] = (
@@ -158,7 +158,7 @@ def load_data():
 
     df["Enrolled"] = df["Enrolled"].fillna("No")
 
-    st.write("Final Merged Rows:", len(df))
+    # st.write("Final Merged Rows:", len(df))
 
     # MONTH COLUMN
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
