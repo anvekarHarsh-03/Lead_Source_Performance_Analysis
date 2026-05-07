@@ -2,224 +2,425 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(layout="wide")
+# ======================================================
+# PAGE CONFIG
+# ======================================================
+st.set_page_config(
+    page_title="Lead Funnel Dashboard",
+    layout="wide"
+)
 
-# =========================
-# HARD RESET ALL STYLES
-# =========================
+# ======================================================
+# GLOBAL STYLING
+# ======================================================
 st.markdown("""
 <style>
 
-/* FORCE EVERYTHING WHITE */
-html, body, [data-testid="stAppViewContainer"],
-[data-testid="stHeader"], section[data-testid="stSidebar"] {
-    background-color: #ffffff !important;
-    color: #111111 !important;
+/* MAIN BACKGROUND */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: white !important;
+    color: #111827 !important;
 }
 
-/* REMOVE DARK BOXES */
-[data-testid="stPlotlyChart"] {
-    background-color: #ffffff !important;
+/* REMOVE DARK AREAS */
+[data-testid="stHeader"] {
+    background: white !important;
 }
 
-/* FIX SPACING */
+[data-testid="stSidebar"] {
+    background: white !important;
+}
+
+/* CONTAINER */
 .block-container {
-    padding-top: 4rem !important;
+    padding-top: 2rem;
     padding-left: 3rem;
     padding-right: 3rem;
 }
 
-/* TEXT */
-.headline {
-    font-size: 26px;
+/* HEADINGS */
+.main-title {
+    font-size: 34px;
     font-weight: 700;
-    margin-bottom: 10px;
+    color: #111827;
+    margin-bottom: 5px;
 }
 
-.sub {
+.sub-title {
     color: #6b7280;
-    margin-bottom: 20px;
+    margin-bottom: 25px;
 }
 
-/* KPI */
-.kpi {
-    border-top: 3px solid #2563eb;
-    padding-top: 6px;
-}
-.kpi-title {
-    font-size: 12px;
-    color: #6b7280;
-}
-.kpi-value {
-    font-size: 20px;
-    font-weight: 600;
-}
-
-/* BOX */
-.box {
-    border: 1px solid #e5e7eb;
-    padding: 12px;
-    border-radius: 6px;
+/* KPI BOX */
+.kpi-card {
     background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 18px;
+}
+
+.kpi-title {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.kpi-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #111827;
+}
+
+/* SECTION BOX */
+.chart-box {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 10px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
+# ======================================================
 # LOAD DATA
-# =========================
+# ======================================================
 @st.cache_data
-def load():
+def load_data():
+
+    # LOAD CSV
     leads = pd.read_csv("dataset/leads_unclean_25000.csv")
     funnel = pd.read_csv("dataset/funnel_unclean_25000.csv")
     cost = pd.read_csv("dataset/marketing_cost_unclean.csv")
 
-    # leads = leads.drop_duplicates()
-    leads["Lead_Source"] = leads["Lead_Source"].str.title()
-    # leads = leads.dropna(subset=["Lead_Source"])
+    # ==================================================
+    # DEBUG COUNTS
+    # ==================================================
+    st.write("Original Leads:", len(leads))
+    st.write("Original Funnel:", len(funnel))
 
-    st.write("Original:", len(leads))
+    # ==================================================
+    # CLEAN LEADS
+    # ==================================================
+    leads["Lead_Source"] = (
+        leads["Lead_Source"]
+        .astype(str)
+        .str.title()
+    )
 
+    # DATE FIX
     leads["Date"] = pd.to_datetime(
-    leads["Date"],
-    errors="coerce",
-    dayfirst=True
-)
-    # leads = leads.dropna(subset=["Date"])
+        leads["Date"],
+        errors="coerce",
+        dayfirst=True
+    )
 
-    funnel["Enrolled"] = funnel["Enrolled"].str.lower().map({
-        "yes":"Yes","no":"No"
-    }).fillna("No")
-    
+    st.write("Invalid Dates:", leads["Date"].isna().sum())
 
+    # ==================================================
+    # CLEAN FUNNEL
+    # ==================================================
+    funnel = funnel.drop_duplicates(subset=["Lead_ID"])
+
+    st.write("Funnel after dedupe:", len(funnel))
+
+    # CLEAN ENROLLED COLUMN
+    funnel["Enrolled"] = (
+        funnel["Enrolled"]
+        .astype(str)
+        .str.lower()
+        .map({
+            "yes": "Yes",
+            "no": "No"
+        })
+        .fillna("No")
+    )
+
+    # ==================================================
+    # CLEAN COST
+    # ==================================================
     cost["Monthly_Cost"] = pd.to_numeric(
-        cost["Monthly_Cost"].astype(str)
+        cost["Monthly_Cost"]
+        .astype(str)
         .str.replace(",", "")
-        .str.replace("INR",""),
+        .str.replace("INR", ""),
         errors="coerce"
     )
 
-    df = leads.merge(funnel, on="Lead_ID", how="left")
-
-    df["Enrolled"] = (
-        df["Enrolled"]
-        .fillna("No")
-        .astype(str)
+    # ==================================================
+    # MERGE
+    # ==================================================
+    df = leads.merge(
+        funnel,
+        on="Lead_ID",
+        how="left"
     )
-    
+
+    df["Enrolled"] = df["Enrolled"].fillna("No")
+
+    st.write("Final Merged Rows:", len(df))
+
+    # MONTH COLUMN
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     return df, cost
 
-df, cost = load()
+# LOAD
+df, cost = load_data()
 
-# =========================
+# ======================================================
 # METRICS
-# =========================
+# ======================================================
 total_leads = len(df)
-enrolled = (df["Enrolled"]=="Yes").sum()
-conversion = enrolled/total_leads*100
-cpe = cost["Monthly_Cost"].sum()/enrolled
 
-# =========================
-# CHANNEL STATS
-# =========================
-lead_counts = df.groupby("Lead_Source")["Lead_ID"].count().reset_index()
-enr = df[df["Enrolled"]=="Yes"].groupby("Lead_Source")["Lead_ID"].count().reset_index()
+enrolled = (
+    df["Enrolled"] == "Yes"
+).sum()
 
-channel = lead_counts.merge(enr, on="Lead_Source")
-channel.columns = ["Channel","Leads","Enrollments"]
+conversion = (
+    enrolled / total_leads * 100
+)
 
-channel = channel.merge(cost, on="Channel")
-channel["Conversion Rate"] = channel["Enrollments"]/channel["Leads"]*100
-channel["Cost per Enrollment"] = channel["Monthly_Cost"]/channel["Enrollments"]
+cpe = (
+    cost["Monthly_Cost"].sum() / enrolled
+)
 
-best = channel.sort_values("Cost per Enrollment").iloc[0]
-worst = channel.sort_values("Cost per Enrollment", ascending=False).iloc[0]
+# ======================================================
+# CHANNEL ANALYSIS
+# ======================================================
+lead_counts = (
+    df.groupby("Lead_Source")["Lead_ID"]
+    .count()
+    .reset_index()
+)
 
-# =========================
-# HEADLINE
-# =========================
+enrollment_counts = (
+    df[df["Enrolled"] == "Yes"]
+    .groupby("Lead_Source")["Lead_ID"]
+    .count()
+    .reset_index()
+)
+
+channel = lead_counts.merge(
+    enrollment_counts,
+    on="Lead_Source",
+    how="left"
+)
+
+channel.columns = [
+    "Channel",
+    "Leads",
+    "Enrollments"
+]
+
+channel["Enrollments"] = (
+    channel["Enrollments"]
+    .fillna(0)
+)
+
+# MERGE COST
+channel = channel.merge(
+    cost,
+    on="Channel",
+    how="left"
+)
+
+# KPIs
+channel["Conversion Rate"] = (
+    channel["Enrollments"] /
+    channel["Leads"] * 100
+)
+
+channel["Cost per Enrollment"] = (
+    channel["Monthly_Cost"] /
+    channel["Enrollments"]
+)
+
+channel["Cost per Enrollment"] = (
+    channel["Cost per Enrollment"]
+    .replace([float("inf")], 0)
+)
+
+# BEST/WORST
+best = channel.sort_values(
+    "Cost per Enrollment"
+).iloc[0]
+
+worst = channel.sort_values(
+    "Cost per Enrollment",
+    ascending=False
+).iloc[0]
+
+# ======================================================
+# HEADER
+# ======================================================
 st.markdown(f"""
-<div class="headline">
-Referral is most efficient (₹{best['Cost per Enrollment']:.0f}); Instagram is ~{(worst['Cost per Enrollment']/best['Cost per Enrollment']):.1f}× more expensive.
+<div class="main-title">
+Marketing Funnel Performance Dashboard
 </div>
-<div class="sub">
-{total_leads:,} leads | {enrolled:,} enrollments | {conversion:.1f}% CVR | ₹{cpe:.0f} CPE
+
+<div class="sub-title">
+Referral is the most efficient channel while Instagram has the highest acquisition cost.
 </div>
 """, unsafe_allow_html=True)
 
-# =========================
-# KPI STRIP
-# =========================
-cols = st.columns(4)
-for i, (t, v) in enumerate([
-    ("Total Leads", total_leads),
-    ("Enrollments", enrolled),
+# ======================================================
+# KPI ROW
+# ======================================================
+k1, k2, k3, k4 = st.columns(4)
+
+metrics = [
+    ("Total Leads", f"{total_leads:,}"),
+    ("Enrollments", f"{enrolled:,}"),
     ("Conversion Rate", f"{conversion:.1f}%"),
     ("Cost / Enrollment", f"₹{cpe:.0f}")
-]):
-    cols[i].markdown(f"""
-    <div class="kpi">
-        <div class="kpi-title">{t}</div>
-        <div class="kpi-value">{v}</div>
+]
+
+for col, (title, value) in zip(
+    [k1, k2, k3, k4],
+    metrics
+):
+    col.markdown(f"""
+    <div class="kpi-card">
+        <div class="kpi-title">{title}</div>
+        <div class="kpi-value">{value}</div>
     </div>
     """, unsafe_allow_html=True)
 
-st.divider()
+st.markdown("<br>", unsafe_allow_html=True)
 
-# =========================
-# ROI (FIXED COLORS + WHITE BG)
-# =========================
-col1, col2 = st.columns(2)
+# ======================================================
+# CHARTS
+# ======================================================
+c1, c2 = st.columns(2)
 
-with col1:
-    st.markdown('<div class="box">', unsafe_allow_html=True)
+# ------------------------------------------------------
+# ROI SCATTER
+# ------------------------------------------------------
+with c1:
 
-    fig = px.scatter(
+    st.markdown(
+        '<div class="chart-box">',
+        unsafe_allow_html=True
+    )
+
+    fig1 = px.scatter(
         channel,
         x="Cost per Enrollment",
         y="Conversion Rate",
-        color="Channel",
         size="Leads",
+        color="Channel",
         text="Channel",
-        template="simple_white"   # 🔥 CRITICAL FIX
+        template="simple_white"
     )
 
-    fig.update_traces(textposition="top center")
+    fig1.update_traces(
+        textposition="top center"
+    )
 
-    st.plotly_chart(fig, use_container_width=True)
+    fig1.update_layout(
+        title="Channel ROI Analysis",
+        height=500
+    )
 
-    st.markdown("**Insight:** Referral best ROI; Instagram inefficient.")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.plotly_chart(
+        fig1,
+        use_container_width=True
+    )
 
-# =========================
-# FUNNEL (FIXED)
-# =========================
-with col2:
-    st.markdown('<div class="box">', unsafe_allow_html=True)
+    st.markdown(
+        "**Insight:** Referral delivers strongest ROI."
+    )
+
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+# ------------------------------------------------------
+# FUNNEL
+# ------------------------------------------------------
+with c2:
+
+    st.markdown(
+        '<div class="chart-box">',
+        unsafe_allow_html=True
+    )
 
     funnel_data = pd.DataFrame({
-        "Stage":["Leads","Enrollment"],
-        "Count":[total_leads,enrolled]
+        "Stage": [
+            "Leads",
+            "Enrollments"
+        ],
+        "Count": [
+            total_leads,
+            enrolled
+        ]
     })
 
     fig2 = px.funnel(
         funnel_data,
         x="Count",
         y="Stage",
-        template="simple_white"   # 🔥 FIX
+        template="simple_white"
     )
 
-    st.plotly_chart(fig2, use_container_width=True)
+    fig2.update_layout(
+        title="Lead Funnel",
+        height=500
+    )
 
-    st.markdown("**Insight:** Major drop early.")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.plotly_chart(
+        fig2,
+        use_container_width=True
+    )
 
-# =========================
-# TABLE
-# =========================
-st.subheader("Channel Comparison")
+    st.markdown(
+        "**Insight:** Significant drop-off before enrollment."
+    )
 
-st.dataframe(channel.sort_values("Cost per Enrollment"), use_container_width=True)
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+# ======================================================
+# MONTHLY TREND
+# ======================================================
+st.markdown("<br>", unsafe_allow_html=True)
+
+monthly = (
+    df.groupby("Month")["Lead_ID"]
+    .count()
+    .reset_index()
+)
+
+fig3 = px.line(
+    monthly,
+    x="Month",
+    y="Lead_ID",
+    markers=True,
+    template="simple_white"
+)
+
+fig3.update_layout(
+    title="Monthly Lead Trend",
+    height=450
+)
+
+st.plotly_chart(
+    fig3,
+    use_container_width=True
+)
+
+# ======================================================
+# CHANNEL TABLE
+# ======================================================
+st.subheader("Channel Performance")
+
+st.dataframe(
+    channel.sort_values(
+        "Cost per Enrollment"
+    ),
+    use_container_width=True
+)
