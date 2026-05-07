@@ -79,6 +79,8 @@ def load():
     leads["Lead_Source"] = leads["Lead_Source"].str.title()
     # leads = leads.dropna(subset=["Lead_Source"])
 
+    st.write("Original:", len(leads))
+
     leads["Date"] = pd.to_datetime(
     leads["Date"],
     errors="coerce",
