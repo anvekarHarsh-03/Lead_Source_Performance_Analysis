@@ -77,7 +77,7 @@ def load():
 
     leads = leads.drop_duplicates()
     leads["Lead_Source"] = leads["Lead_Source"].str.title()
-    leads = leads.dropna(subset=["Lead_Source"])
+    # leads = leads.dropna(subset=["Lead_Source"])
 
     leads["Date"] = pd.to_datetime(leads["Date"], errors="coerce")
     leads = leads.dropna(subset=["Date"])
